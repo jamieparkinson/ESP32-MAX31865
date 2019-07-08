@@ -12,7 +12,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-void app_main() {
+#include "Max31865.h"
+
+extern "C" void app_main() {
   printf("Hello world!\n");
 
   /* Print chip information */
