@@ -1,13 +1,15 @@
 #include "Max31865.h"
+#include <driver/gpio.h>
 #include <esp_log.h>
 #include <freertos/task.h>
 #include <math.h>
+#include <string.h>
 #include <climits>
 
 static const char *TAG = "Max31865";
 
-Max31865::Max31865(int miso, int mosi, int sck, int cs)
-    : miso(miso), mosi(mosi), sck(sck), cs(cs) {}
+Max31865::Max31865(int miso, int mosi, int sck, int cs, spi_host_device_t host)
+    : miso(miso), mosi(mosi), sck(sck), cs(cs), hostDevice(host) {}
 
 Max31865::~Max31865() {
   spi_bus_remove_device(deviceHandle);
@@ -15,25 +17,36 @@ Max31865::~Max31865() {
 }
 
 esp_err_t Max31865::begin(max31865_config_t config, max31865_rtd_config_t rtd) {
-  spi_bus_config_t busConfig;
+  gpio_config_t gpioConfig = {};
+  gpioConfig.intr_type = GPIO_INTR_DISABLE;
+  gpioConfig.mode = GPIO_MODE_OUTPUT;
+  gpioConfig.pull_up_en = GPIO_PULLUP_ENABLE;
+  gpioConfig.pin_bit_mask = 1ULL << cs;
+  gpio_config(&gpioConfig);
+
+  spi_bus_config_t busConfig = {};
   busConfig.miso_io_num = miso;
   busConfig.mosi_io_num = mosi;
   busConfig.sclk_io_num = sck;
   busConfig.quadhd_io_num = -1;
   busConfig.quadwp_io_num = -1;
-  esp_err_t err = spi_bus_initialize(hostDevice, &busConfig, 1);
+  esp_err_t err = spi_bus_initialize(hostDevice, &busConfig, 0);
   if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Error initialising SPI bus: %d", err);
+    ESP_LOGE(TAG, "Error initialising SPI bus: %s", esp_err_to_name(err));
     return err;
   }
 
-  spi_device_interface_config_t deviceConfig;
-  deviceConfig.spics_io_num = cs;
+  spi_device_interface_config_t deviceConfig = {};
+  deviceConfig.spics_io_num = -1;  // ESP32's hardware CS is too quick
   deviceConfig.clock_speed_hz = 5000000;
+  deviceConfig.mode = 3;
   deviceConfig.address_bits = CHAR_BIT;
+  deviceConfig.command_bits = 0;
+  deviceConfig.flags = SPI_DEVICE_HALFDUPLEX;
+  deviceConfig.queue_size = 1;
   err = spi_bus_add_device(hostDevice, &deviceConfig, &deviceHandle);
   if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Error adding SPI device: %d", err);
+    ESP_LOGE(TAG, "Error adding SPI device: %s", esp_err_to_name(err));
     return err;
   }
   rtdConfig = rtd;
@@ -41,23 +54,35 @@ esp_err_t Max31865::begin(max31865_config_t config, max31865_rtd_config_t rtd) {
 }
 
 esp_err_t Max31865::writeSPI(uint8_t addr, uint8_t *data, size_t size) {
-  spi_transaction_t transaction;
+  assert(size <= 4);  // we're using the transaction buffers
+  spi_transaction_t transaction = {};
   transaction.length = CHAR_BIT * size;
   transaction.rxlength = 0;
   transaction.addr = addr | MAX31865_REG_WRITE_OFFSET;
-  transaction.tx_buffer = data;
-  transaction.rx_buffer = nullptr;
-  return spi_device_transmit(deviceHandle, &transaction);
+  transaction.flags = SPI_TRANS_USE_TXDATA;
+  memcpy(transaction.tx_data, data, size);
+  gpio_set_level(static_cast<gpio_num_t>(cs), 0);
+  esp_err_t err = spi_device_polling_transmit(deviceHandle, &transaction);
+  gpio_set_level(static_cast<gpio_num_t>(cs), 1);
+  return err;
 }
 
 esp_err_t Max31865::readSPI(uint8_t addr, uint8_t *result, size_t size) {
-  spi_transaction_t transaction;
-  transaction.length = CHAR_BIT * size;
+  assert(size <= 4);  // we're using the transaction buffers
+  spi_transaction_t transaction = {};
+  transaction.length = 0;
+  transaction.rxlength = CHAR_BIT * size;
   transaction.addr = addr & (MAX31865_REG_WRITE_OFFSET - 1);
-  transaction.tx_buffer = nullptr;
-  transaction.rx_buffer = result;
-  transaction.rxlength = size;
-  return spi_device_transmit(deviceHandle, &transaction);
+  transaction.flags = SPI_TRANS_USE_RXDATA;
+  gpio_set_level(static_cast<gpio_num_t>(cs), 0);
+  esp_err_t err = spi_device_polling_transmit(deviceHandle, &transaction);
+  gpio_set_level(static_cast<gpio_num_t>(cs), 1);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Error sending SPI transaction: %s", esp_err_to_name(err));
+    return err;
+  }
+  memcpy(result, transaction.rx_data, size);
+  return ESP_OK;
 }
 
 esp_err_t Max31865::setConfig(max31865_config_t config) {
@@ -86,7 +111,7 @@ esp_err_t Max31865::getConfig(max31865_config_t *config) {
   uint8_t configByte = 0;
   esp_err_t err = readSPI(MAX31865_CONFIG_REG, &configByte, 1);
   if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Error reading config: %d", err);
+    ESP_LOGE(TAG, "Error reading config: %s", esp_err_to_name(err));
     return err;
   }
   config->vbias = ((configByte >> MAX31865_CONFIG_VBIAS_BIT) & 1U) != 0;
@@ -105,7 +130,7 @@ esp_err_t Max31865::clearFault() {
   uint8_t configByte = 0;
   esp_err_t err = readSPI(MAX31865_CONFIG_REG, &configByte, 1);
   if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Error reading config: %d", err);
+    ESP_LOGE(TAG, "Error reading config: %s", esp_err_to_name(err));
     return err;
   }
   configByte &= ~(1U << MAX31865_CONFIG_FAULTSTATUS_BIT);
@@ -119,26 +144,29 @@ esp_err_t Max31865::readFaultStatus(uint8_t *fault) {
 
 esp_err_t Max31865::getRTD(uint16_t *rtd) {
   max31865_config_t oldConfig = chipConfig;
+  bool restoreConfig = false;
   if (!chipConfig.vbias) {
+    restoreConfig = true;
     chipConfig.vbias = true;
     esp_err_t err = setConfig(chipConfig);
     if (err != ESP_OK) {
-      ESP_LOGE(TAG, "Error setting config: %d", err);
+      ESP_LOGE(TAG, "Error setting config: %s", esp_err_to_name(err));
       return err;
     }
     vTaskDelay(pdMS_TO_TICKS(10));
   }
   if (!chipConfig.autoConversion) {
+    restoreConfig = true;
     uint8_t configByte = 0;
     esp_err_t err = readSPI(MAX31865_CONFIG_REG, &configByte, 1);
     if (err != ESP_OK) {
-      ESP_LOGE(TAG, "Error reading config: %d", err);
+      ESP_LOGE(TAG, "Error reading config: %s", esp_err_to_name(err));
       return err;
     }
     configByte |= 1U << MAX31865_CONFIG_1SHOT_BIT;
     err = writeSPI(MAX31865_CONFIG_REG, &configByte, 1);
     if (err != ESP_OK) {
-      ESP_LOGE(TAG, "Error writing config: %d", err);
+      ESP_LOGE(TAG, "Error writing config: %s", esp_err_to_name(err));
       return err;
     }
     vTaskDelay(pdMS_TO_TICKS(65));
@@ -147,7 +175,7 @@ esp_err_t Max31865::getRTD(uint16_t *rtd) {
   uint8_t rtdBytes[2];
   esp_err_t err = readSPI(MAX31865_RTD_REG, rtdBytes, 2);
   if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Error reading RTD: %d", err);
+    ESP_LOGE(TAG, "Error reading RTD: %s", esp_err_to_name(err));
     return err;
   }
 
@@ -155,7 +183,7 @@ esp_err_t Max31865::getRTD(uint16_t *rtd) {
   *rtd |= rtdBytes[1];
   *rtd >>= 1U;
 
-  return setConfig(oldConfig);
+  return restoreConfig ? setConfig(oldConfig) : ESP_OK;
 }
 
 esp_err_t Max31865::getTemperature(float *temperature) {

@@ -3,7 +3,7 @@
 # project subdirectory.
 #
 
-PROJECT_NAME := hello-world
+PROJECT_NAME := esp32-max31865
 
 include $(IDF_PATH)/make/project.mk
 

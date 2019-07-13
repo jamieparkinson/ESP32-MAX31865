@@ -51,7 +51,8 @@ struct max31865_rtd_config_t {
 
 class Max31865 {
  public:
-  Max31865(int miso, int mosi, int sck, int cs);
+  Max31865(int miso, int mosi, int sck, int cs,
+           spi_host_device_t host = HSPI_HOST);
   ~Max31865();
 
   esp_err_t begin(max31865_config_t config, max31865_rtd_config_t rtd);
@@ -69,10 +70,11 @@ class Max31865 {
   int mosi;
   int sck;
   int cs;
+  spi_host_device_t hostDevice;
+
   max31865_config_t chipConfig;
   max31865_rtd_config_t rtdConfig;
 
-  spi_host_device_t hostDevice;
   spi_device_handle_t deviceHandle;
 
   esp_err_t writeSPI(uint8_t addr, uint8_t *data, size_t size = 1);
