@@ -20,13 +20,6 @@
 #define MAX31865_CONFIG_FAULTSTATUS_BIT 1
 #define MAX31865_CONFIG_MAINSFILTER_BIT 0
 
-#define MAX31865_FAULTSTATUS_RTDHIGH 7
-#define MAX31865_FAULTSTATUS_RTDLOW 6
-#define MAX31865_FAULTSTATUS_REFHIGH 5
-#define MAX31865_FAULTSTATUS_REFLOW 4
-#define MAX31865_FAULTSTATUS_RTDINLOW 3
-#define MAX31865_FAULTSTATUS_VOLTAGE 2
-
 enum class Max31865NWires : uint8_t { Three = 1, Two = 0, Four = 0 };
 enum class Max31865FaultDetection : uint8_t {
   NoAction = 0b00,
@@ -35,6 +28,16 @@ enum class Max31865FaultDetection : uint8_t {
   ManualDelayCycle2 = 0b11
 };
 enum class Max31865Filter : uint8_t { Hz50 = 1, Hz60 = 0 };
+
+enum class Max31865Error : uint8_t {
+  NoError = 0,
+  Voltage = 2,
+  RTDInLow,
+  RefLow,
+  RefHigh,
+  RTDLow,
+  RTDHigh
+};
 
 struct max31865_config_t {
   bool vbias;
@@ -60,8 +63,7 @@ class Max31865 {
   esp_err_t setConfig(max31865_config_t config);
   esp_err_t getConfig(max31865_config_t *config);
   esp_err_t clearFault();
-  esp_err_t readFaultStatus(uint8_t *fault);
-
+  esp_err_t readFaultStatus(Max31865Error *fault);
   esp_err_t getRTD(uint16_t *rtd);
   esp_err_t getTemperature(float *temperature);
 

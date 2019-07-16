@@ -38,8 +38,8 @@ esp_err_t Max31865::begin(max31865_config_t config, max31865_rtd_config_t rtd) {
 
   spi_device_interface_config_t deviceConfig = {};
   deviceConfig.spics_io_num = -1;  // ESP32's hardware CS is too quick
-  deviceConfig.clock_speed_hz = 5000000;
-  deviceConfig.mode = 3;
+  deviceConfig.clock_speed_hz = 3000000;
+  deviceConfig.mode = 1;
   deviceConfig.address_bits = CHAR_BIT;
   deviceConfig.command_bits = 0;
   deviceConfig.flags = SPI_DEVICE_HALFDUPLEX;
@@ -137,9 +137,19 @@ esp_err_t Max31865::clearFault() {
   return writeSPI(MAX31865_CONFIG_REG, &configByte, 1);
 }
 
-esp_err_t Max31865::readFaultStatus(uint8_t *fault) {
-  *fault = 0;
-  return readSPI(MAX31865_FAULT_STATUS_REG, fault, 1);
+esp_err_t Max31865::readFaultStatus(Max31865Error *fault) {
+  *fault = Max31865Error::NoError;
+  uint8_t faultByte = 0;
+  esp_err_t err = readSPI(MAX31865_FAULT_STATUS_REG, &faultByte, 1);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Error reading fault status: %s", esp_err_to_name(err));
+    return err;
+  }
+  if (faultByte != 0) {
+    *fault = static_cast<Max31865Error>(CHAR_BIT * sizeof(unsigned int) - 1 -
+                                        __builtin_clz(faultByte));
+  }
+  return ESP_OK;
 }
 
 esp_err_t Max31865::getRTD(uint16_t *rtd) {
