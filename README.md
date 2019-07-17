@@ -1,0 +1,2 @@
+# ESP32-MAX31865
+ESP-IDF driver for the MAX31865
