@@ -15,11 +15,13 @@ extern "C" void app_main() {
   rtdConfig.nominal = 100.0f;
   rtdConfig.ref = 430.0f;
   ESP_ERROR_CHECK(tempSensor.begin(tempConfig, rtdConfig));
+  ESP_ERROR_CHECK(tempSensor.setRTDThresholds(0x2000, 0x2500));
 
   while (true) {
     float temp;
-    ESP_ERROR_CHECK(tempSensor.getTemperature(&temp));
+    Max31865Error fault = Max31865Error::NoError;
+    ESP_ERROR_CHECK(tempSensor.getTemperature(&temp, &fault));
     ESP_LOGI("Temperature", "%.2f C", temp);
-    vTaskDelay(pdMS_TO_TICKS(100));
+    vTaskDelay(pdMS_TO_TICKS(500));
   }
 }

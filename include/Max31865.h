@@ -54,6 +54,8 @@ struct max31865_rtd_config_t {
 
 class Max31865 {
  public:
+  static const char *errorToString(Max31865Error error);
+
   Max31865(int miso, int mosi, int sck, int cs,
            spi_host_device_t host = HSPI_HOST);
   ~Max31865();
@@ -62,10 +64,11 @@ class Max31865 {
 
   esp_err_t setConfig(max31865_config_t config);
   esp_err_t getConfig(max31865_config_t *config);
+  esp_err_t setRTDThresholds(uint16_t min, uint16_t max);
   esp_err_t clearFault();
   esp_err_t readFaultStatus(Max31865Error *fault);
-  esp_err_t getRTD(uint16_t *rtd);
-  esp_err_t getTemperature(float *temperature);
+  esp_err_t getRTD(uint16_t *rtd, Max31865Error *fault = nullptr);
+  esp_err_t getTemperature(float *temperature, Max31865Error *fault = nullptr);
 
  private:
   int miso;

@@ -8,6 +8,33 @@
 
 static const char *TAG = "Max31865";
 
+const char *Max31865::errorToString(Max31865Error error) {
+  switch (error) {
+    case Max31865Error::NoError: {
+      return "No error";
+    }
+    case Max31865Error::Voltage: {
+      return "Over/under voltage fault";
+    }
+    case Max31865Error::RTDInLow: {
+      return "RTDIN- < 0.85*VBIAS (FORCE- open)";
+    }
+    case Max31865Error::RefLow: {
+      return "REFIN- < 0.85*VBIAS (FORCE- open)";
+    }
+    case Max31865Error::RefHigh: {
+      return "REFIN- > 0.85*VBIAS";
+    }
+    case Max31865Error::RTDLow: {
+      return "RTD below low threshold";
+    }
+    case Max31865Error::RTDHigh: {
+      return "RTD above high threshold";
+    }
+  }
+  return "";
+}
+
 Max31865::Max31865(int miso, int mosi, int sck, int cs, spi_host_device_t host)
     : miso(miso), mosi(mosi), sck(sck), cs(cs), hostDevice(host) {}
 
@@ -126,6 +153,16 @@ esp_err_t Max31865::getConfig(max31865_config_t *config) {
   return ESP_OK;
 }
 
+esp_err_t Max31865::setRTDThresholds(uint16_t min, uint16_t max) {
+  assert((min < (1 << 15)) && (max < (1 << 15)));
+  uint8_t thresholds[4];
+  thresholds[0] = static_cast<uint8_t>((max << 1) >> CHAR_BIT);
+  thresholds[1] = static_cast<uint8_t>(max << 1);
+  thresholds[2] = static_cast<uint8_t>((min << 1) >> CHAR_BIT);
+  thresholds[3] = static_cast<uint8_t>(min << 1);
+  return writeSPI(MAX31865_HIGH_FAULT_REG, thresholds, sizeof(thresholds));
+}
+
 esp_err_t Max31865::clearFault() {
   uint8_t configByte = 0;
   esp_err_t err = readSPI(MAX31865_CONFIG_REG, &configByte, 1);
@@ -149,10 +186,10 @@ esp_err_t Max31865::readFaultStatus(Max31865Error *fault) {
     *fault = static_cast<Max31865Error>(CHAR_BIT * sizeof(unsigned int) - 1 -
                                         __builtin_clz(faultByte));
   }
-  return ESP_OK;
+  return clearFault();
 }
 
-esp_err_t Max31865::getRTD(uint16_t *rtd) {
+esp_err_t Max31865::getRTD(uint16_t *rtd, Max31865Error *fault) {
   max31865_config_t oldConfig = chipConfig;
   bool restoreConfig = false;
   if (!chipConfig.vbias) {
@@ -189,6 +226,17 @@ esp_err_t Max31865::getRTD(uint16_t *rtd) {
     return err;
   }
 
+  if (static_cast<bool>(rtdBytes[1] & 1U)) {
+    *rtd = 0;
+    if (fault == nullptr) {
+      auto tmp = Max31865Error::NoError;
+      fault = &tmp;
+    }
+    readFaultStatus(fault);
+    ESP_LOGW(TAG, "Sensor fault detected: %s", errorToString(*fault));
+    return ESP_ERR_INVALID_RESPONSE;
+  }
+
   *rtd = rtdBytes[0] << CHAR_BIT;
   *rtd |= rtdBytes[1];
   *rtd >>= 1U;
@@ -196,9 +244,9 @@ esp_err_t Max31865::getRTD(uint16_t *rtd) {
   return restoreConfig ? setConfig(oldConfig) : ESP_OK;
 }
 
-esp_err_t Max31865::getTemperature(float *temperature) {
+esp_err_t Max31865::getTemperature(float *temperature, Max31865Error *fault) {
   uint16_t rtd = 0;
-  esp_err_t err = getRTD(&rtd);
+  esp_err_t err = getRTD(&rtd, fault);
   if (err != ESP_OK) {
     return err;
   }
