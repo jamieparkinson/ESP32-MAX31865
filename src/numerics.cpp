@@ -14,7 +14,6 @@ float Max31865::RTDtoTemperature(uint16_t rtd,
                                  max31865_rtd_config_t rtdConfig) {
   float Rrtd = (rtd * rtdConfig.ref) / (1U << 15U);
 
-  // Callendar-Van Dusen
   float Z1, Z2, Z3, Z4, temperature;
   Z1 = -RTD_A;
   Z2 = RTD_A * RTD_A - (4 * RTD_B);
@@ -27,7 +26,6 @@ float Max31865::RTDtoTemperature(uint16_t rtd,
     return temperature;
   }
 
-  // Analog Devices AN709 polynomial
   Rrtd /= rtdConfig.nominal;
   Rrtd *= 100.0;
   return A[0] + A[1] * Rrtd + A[2] * pow(Rrtd, 2) + A[3] * pow(Rrtd, 3) +
