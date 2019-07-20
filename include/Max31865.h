@@ -3,6 +3,8 @@
 
 #include <driver/spi_common.h>
 #include <driver/spi_master.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 #define MAX31865_CONFIG_REG 0x00
 #define MAX31865_RTD_REG 0x01
@@ -28,7 +30,6 @@ enum class Max31865FaultDetection : uint8_t {
   ManualDelayCycle2 = 0b11
 };
 enum class Max31865Filter : uint8_t { Hz50 = 1, Hz60 = 0 };
-
 enum class Max31865Error : uint8_t {
   NoError = 0,
   Voltage = 2,
@@ -59,7 +60,7 @@ class Max31865 {
                                    max31865_rtd_config_t rtdConfig);
   static const char *errorToString(Max31865Error error);
 
-  Max31865(int miso, int mosi, int sck, int cs,
+  Max31865(int miso, int mosi, int sck, int cs, int drdy = -1,
            spi_host_device_t host = HSPI_HOST);
   ~Max31865();
 
@@ -72,13 +73,17 @@ class Max31865 {
   esp_err_t getRTD(uint16_t *rtd, Max31865Error *fault = nullptr);
 
  private:
+  static void drdyInterruptHandler(void *arg);
+
   int miso;
   int mosi;
   int sck;
   int cs;
+  int drdy;
   spi_host_device_t hostDevice;
   max31865_config_t chipConfig;
   spi_device_handle_t deviceHandle;
+  SemaphoreHandle_t drdySemaphore;
 
   esp_err_t writeSPI(uint8_t addr, uint8_t *data, size_t size = 1);
   esp_err_t readSPI(uint8_t addr, uint8_t *result, size_t size = 1);

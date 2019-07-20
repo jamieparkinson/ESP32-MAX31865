@@ -35,12 +35,22 @@ const char *Max31865::errorToString(Max31865Error error) {
   return "";
 }
 
-Max31865::Max31865(int miso, int mosi, int sck, int cs, spi_host_device_t host)
-    : miso(miso), mosi(mosi), sck(sck), cs(cs), hostDevice(host) {}
+void IRAM_ATTR Max31865::drdyInterruptHandler(void *arg) {
+  static BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+  xSemaphoreGiveFromISR((SemaphoreHandle_t) arg, &xHigherPriorityTaskWoken);
+  if (xHigherPriorityTaskWoken) {
+    portYIELD_FROM_ISR()
+  }
+}
+
+Max31865::Max31865(int miso, int mosi, int sck, int cs, int drdy,
+                   spi_host_device_t host)
+    : miso(miso), mosi(mosi), sck(sck), cs(cs), drdy(drdy), hostDevice(host) {}
 
 Max31865::~Max31865() {
   spi_bus_remove_device(deviceHandle);
   spi_bus_free(hostDevice);
+  gpio_uninstall_isr_service();
 }
 
 esp_err_t Max31865::begin(max31865_config_t config) {
@@ -50,6 +60,25 @@ esp_err_t Max31865::begin(max31865_config_t config) {
   gpioConfig.pull_up_en = GPIO_PULLUP_ENABLE;
   gpioConfig.pin_bit_mask = 1ULL << cs;
   gpio_config(&gpioConfig);
+
+  if (drdy > -1) {
+    gpio_config_t gpioConfig = {};
+    gpioConfig.intr_type = GPIO_INTR_NEGEDGE;
+    gpioConfig.mode = GPIO_MODE_INPUT;
+    gpioConfig.pull_up_en = GPIO_PULLUP_ENABLE;
+    gpioConfig.pin_bit_mask = 1ULL << drdy;
+    gpio_config(&gpioConfig);
+
+    drdySemaphore = xSemaphoreCreateBinary();
+    // There won't be a negative edge interrupt if it's already low
+    if (gpio_get_level(static_cast<gpio_num_t>(drdy)) == 0) {
+      xSemaphoreGive(drdySemaphore);
+    }
+
+    gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
+    gpio_isr_handler_add(static_cast<gpio_num_t>(drdy), &drdyInterruptHandler,
+                         drdySemaphore);
+  }
 
   spi_bus_config_t busConfig = {};
   busConfig.miso_io_num = miso;
@@ -216,6 +245,8 @@ esp_err_t Max31865::getRTD(uint16_t *rtd, Max31865Error *fault) {
       return err;
     }
     vTaskDelay(pdMS_TO_TICKS(65));
+  } else if (drdy > -1) {
+    xSemaphoreTake(drdySemaphore, portMAX_DELAY);
   }
 
   uint8_t rtdBytes[2];
