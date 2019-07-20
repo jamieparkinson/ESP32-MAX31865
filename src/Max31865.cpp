@@ -43,7 +43,7 @@ Max31865::~Max31865() {
   spi_bus_free(hostDevice);
 }
 
-esp_err_t Max31865::begin(max31865_config_t config, max31865_rtd_config_t rtd) {
+esp_err_t Max31865::begin(max31865_config_t config) {
   gpio_config_t gpioConfig = {};
   gpioConfig.intr_type = GPIO_INTR_DISABLE;
   gpioConfig.mode = GPIO_MODE_OUTPUT;
@@ -76,7 +76,6 @@ esp_err_t Max31865::begin(max31865_config_t config, max31865_rtd_config_t rtd) {
     ESP_LOGE(TAG, "Error adding SPI device: %s", esp_err_to_name(err));
     return err;
   }
-  rtdConfig = rtd;
   return setConfig(config);
 }
 
@@ -242,39 +241,4 @@ esp_err_t Max31865::getRTD(uint16_t *rtd, Max31865Error *fault) {
   *rtd >>= 1U;
 
   return restoreConfig ? setConfig(oldConfig) : ESP_OK;
-}
-
-esp_err_t Max31865::getTemperature(float *temperature, Max31865Error *fault) {
-  uint16_t rtd = 0;
-  esp_err_t err = getRTD(&rtd, fault);
-  if (err != ESP_OK) {
-    return err;
-  }
-  float Rrtd = (rtd * rtdConfig.ref) / (1U << 15U);
-
-  // Callendar-Van Dusen
-  float Z1, Z2, Z3, Z4;
-  static constexpr float RTD_A = 3.9083e-3;
-  static constexpr float RTD_B = -5.775e-7;
-  Z1 = -RTD_A;
-  Z2 = RTD_A * RTD_A - (4 * RTD_B);
-  Z3 = (4 * RTD_B) / rtdConfig.nominal;
-  Z4 = 2 * RTD_B;
-  *temperature = Z2 + (Z3 * Rrtd);
-  *temperature = (sqrt(*temperature) + Z1) / Z4;
-
-  if (*temperature > 0.0) {
-    return ESP_OK;
-  }
-
-  // Analog Devices AN709 polynomial
-  Rrtd /= rtdConfig.nominal;
-  Rrtd *= 100.0;
-  static constexpr float A[6] = {-242.02,   2.2228,    2.5859e-3,
-                                 4.8260e-6, 2.8183e-8, 1.5243e-10};
-  *temperature = A[0] + A[1] * Rrtd + A[2] * pow(Rrtd, 2) +
-                 A[3] * pow(Rrtd, 3) + A[4] * pow(Rrtd, 4) +
-                 A[5] * pow(Rrtd, 5);
-
-  return ESP_OK;
 }

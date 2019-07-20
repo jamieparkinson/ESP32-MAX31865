@@ -14,13 +14,14 @@ extern "C" void app_main() {
   max31865_rtd_config_t rtdConfig = {};
   rtdConfig.nominal = 100.0f;
   rtdConfig.ref = 430.0f;
-  ESP_ERROR_CHECK(tempSensor.begin(tempConfig, rtdConfig));
+  ESP_ERROR_CHECK(tempSensor.begin(tempConfig));
   ESP_ERROR_CHECK(tempSensor.setRTDThresholds(0x2000, 0x2500));
 
   while (true) {
-    float temp;
+    uint16_t rtd;
     Max31865Error fault = Max31865Error::NoError;
-    ESP_ERROR_CHECK(tempSensor.getTemperature(&temp, &fault));
+    ESP_ERROR_CHECK(tempSensor.getRTD(&rtd, &fault));
+    float temp = Max31865::RTDtoTemperature(rtd, rtdConfig);
     ESP_LOGI("Temperature", "%.2f C", temp);
     vTaskDelay(pdMS_TO_TICKS(500));
   }
