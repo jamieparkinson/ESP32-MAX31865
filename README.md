@@ -7,11 +7,11 @@ See [examples/simple/main/main.cpp]().
 
 ### Reference
 
-####Constructor
+#### Constructor
 
-#####`Max31856(int miso, int mosi, int sck, int cs, int drdy = -1, spi_host_device_t host = HSPI_HOST)`
+##### `Max31856(int miso, int mosi, int sck, int cs, int drdy = -1, spi_host_device_t host = HSPI_HOST)`
 
-######Parameters
+###### Parameters
 
 - `int miso, int mosi, int sck, int cs` - GPIO numbers for SPI communication to the chip
 - `int drdy` - GPIO number for the DRDY output of the MAX31865. Not used if equal to `-1`. If set, RTD reads will block until DRDY is low.
@@ -19,9 +19,9 @@ See [examples/simple/main/main.cpp]().
 
 
 
-####Static methods
+#### Static methods
 
-#####`float RTDtoTemperature(uint16_t rtd, max31865_rtd_config_t rtdConfig)`
+##### `float RTDtoTemperature(uint16_t rtd, max31865_rtd_config_t rtdConfig)`
 
 ###### Parameters
 
@@ -34,7 +34,7 @@ See [examples/simple/main/main.cpp]().
 
   
 
-#####`uint16_t temperatureToRTD(float temperature, max31865_rtd_config_t rtdConfig)`
+##### `uint16_t temperatureToRTD(float temperature, max31865_rtd_config_t rtdConfig)`
 
 ###### Parameters
 
@@ -47,7 +47,7 @@ See [examples/simple/main/main.cpp]().
 
 
 
-#####`const char *errorToString(Max31865Error error)`
+##### `const char *errorToString(Max31865Error error)`
 
 ###### Parameters
 
