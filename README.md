@@ -3,7 +3,7 @@ A driver for the MAX31865 RTD-to-Digital converter, written using/for the [esp-i
 
 ### Example
 
-See [examples/simple/main/main.cpp]().
+See [examples/simple/main/main.cpp](examples/simple/main/main.cpp).
 
 ### Reference
 
