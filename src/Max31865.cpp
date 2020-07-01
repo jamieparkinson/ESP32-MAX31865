@@ -49,8 +49,14 @@ Max31865::Max31865(int miso, int mosi, int sck, int cs, int drdy,
 
 Max31865::~Max31865() {
   spi_bus_remove_device(deviceHandle);
-  spi_bus_free(hostDevice);
-  gpio_uninstall_isr_service();
+  esp_err_t err = spi_bus_free(hostDevice);
+  if (err == ESP_OK) {
+    gpio_uninstall_isr_service();
+  } else if (err == ESP_ERR_INVALID_STATE) {
+    ESP_LOGD(TAG, "Devices still attached; not freeing the bus");
+  } else {
+    ESP_LOGE(TAG, "Error freeing bus: %s", esp_err_to_name(err));
+  }
 }
 
 esp_err_t Max31865::begin(max31865_config_t config) {
@@ -87,7 +93,10 @@ esp_err_t Max31865::begin(max31865_config_t config) {
   busConfig.quadhd_io_num = -1;
   busConfig.quadwp_io_num = -1;
   esp_err_t err = spi_bus_initialize(hostDevice, &busConfig, 0);
-  if (err != ESP_OK) {
+  // INVALID_STATE means the host is already in use - that's OK
+  if (err == ESP_ERR_INVALID_STATE) {
+    ESP_LOGD(TAG, "SPI bus already initialized");
+  } else if (err != ESP_OK) {
     ESP_LOGE(TAG, "Error initialising SPI bus: %s", esp_err_to_name(err));
     return err;
   }
