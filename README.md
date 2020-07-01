@@ -142,7 +142,7 @@ Gets the current RTD resistance (15-bit value) from the MAX31865 and optionally 
 
 ##### `struct max31865_config_t`
 
-######Members
+###### Members
 
 - `bool vbias` - Enables Vbias if true
 - `bool autoConversion` - Enables automatic conversion if true (otherwise 1-shot)
