@@ -39,7 +39,7 @@ void IRAM_ATTR Max31865::drdyInterruptHandler(void *arg) {
   static BaseType_t xHigherPriorityTaskWoken = pdFALSE;
   xSemaphoreGiveFromISR((SemaphoreHandle_t) arg, &xHigherPriorityTaskWoken);
   if (xHigherPriorityTaskWoken) {
-    portYIELD_FROM_ISR()
+    portYIELD_FROM_ISR();
   }
 }
 
