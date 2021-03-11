@@ -207,7 +207,7 @@ esp_err_t Max31865::clearFault() {
     ESP_LOGE(TAG, "Error reading config: %s", esp_err_to_name(err));
     return err;
   }
-  configByte &= ~(1U << MAX31865_CONFIG_FAULTSTATUS_BIT);
+  configByte |= 1U << MAX31865_CONFIG_FAULTSTATUS_BIT;
   return writeSPI(MAX31865_CONFIG_REG, &configByte, 1);
 }
 
